@@ -55,6 +55,13 @@ def _login(webdriver: WebDriver) -> None:
     try:
         WebDriverWait(webdriver, Delay.large).until(lambda d: ZEIT_LOGIN_HOST not in d.current_url)
     except TimeoutException:
+        # collect error messages shown on the login page to tell wrong credentials from other problems
+        messages = []
+        for el in webdriver.find_elements(By.CSS_SELECTOR, '[id*="error"], [class*="error"], [class*="alert"], [role="alert"]'):
+            text = el.text.strip()
+            if text and text not in messages:
+                messages.append(text)
+        log.error(f"messages on ZEIT login page: {messages or 'none'}")
         raise RuntimeError(
             "Failed to login, still on the ZEIT login page. Check your login credentials. "
             "Note: the login page uses a captcha which may block automated logins."
