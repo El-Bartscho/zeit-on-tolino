@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 from typing import Tuple
 
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as EC
@@ -14,6 +15,7 @@ from zeit_on_tolino.env_vars import EnvVars, MissingEnvironmentVariable
 from zeit_on_tolino.web import Delay
 
 ZEIT_LOGIN_URL = "https://epaper.zeit.de/abo/diezeit"
+ZEIT_LOGIN_HOST = "login.zeit.de"
 ZEIT_DATE_FORMAT = "%d.%m.%Y"
 
 BUTTON_TEXT_TO_RECENT_EDITION = "ZUR AKTUELLEN AUSGABE"
@@ -39,17 +41,24 @@ def _login(webdriver: WebDriver) -> None:
     username, password = _get_credentials()
     webdriver.get(ZEIT_LOGIN_URL)
 
-    username_field = webdriver.find_element(By.ID, "login_email")
+    # ZEIT redirects to its login page at login.zeit.de (since 2025/2026)
+    WebDriverWait(webdriver, Delay.medium).until(EC.presence_of_element_located((By.ID, "username")))
+    username_field = webdriver.find_element(By.ID, "username")
     username_field.send_keys(username)
-    password_field = webdriver.find_element(By.ID, "login_pass")
+    password_field = webdriver.find_element(By.ID, "password")
     password_field.send_keys(password)
 
-    btn = webdriver.find_element(By.CLASS_NAME, "submit-button.log")
+    btn = webdriver.find_element(By.ID, "kc-login")
     btn.click()
-    time.sleep(Delay.small)
 
-    if "anmelden" in webdriver.current_url:
-        raise RuntimeError("Failed to login, check your login credentials.")
+    # wait until we are redirected back from the login page to the e-paper page
+    try:
+        WebDriverWait(webdriver, Delay.large).until(lambda d: ZEIT_LOGIN_HOST not in d.current_url)
+    except TimeoutException:
+        raise RuntimeError(
+            "Failed to login, still on the ZEIT login page. Check your login credentials. "
+            "Note: the login page uses a captcha which may block automated logins."
+        )
 
     WebDriverWait(webdriver, Delay.medium).until(EC.presence_of_element_located((By.CLASS_NAME, "page-section-header")))
 
